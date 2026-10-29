@@ -2,118 +2,98 @@
 
 {% block title %}{{ lesson.title }} - {{ subject.title }}{% endblock %}
 
+{% block extra_head %}
+{% include "other_quiz/_style.html" %}
+{% endblock %}
+
 {% block navbar %}
   {% include "components/navbar.html" with subject_name=lesson.title subject_icon=subject.icon|default:"📖" %}
 {% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto py-6">
-  <div class="space-y-8" id="quiz-container">
-    {% for q in questions %}
-      <div class="panel shadow-sm border border-gray-100" id="question-{{ q.id }}">
-        
-        <!-- Header câu hỏi: Đưa title vào trong ngoặc viết đằng trước, bỏ nhãn phân loại -->
-        <div class="border-b pb-3 mb-4 border-gray-100">
-          <div class="flex items-start space-x-2">
-            <span class="font-bold text-gray-500 shrink-0">Câu {{ forloop.counter }}:</span>
-            <h3 class="text-base font-medium text-gray-800 leading-relaxed">
-              <span class="font-bold text-gray-900">[{{ q.title }}]</span> {{ q.prompt }}
-            </h3>
+<div id="quiz-container">
+  {% for q in questions %}
+    <section class="panel oq-question" id="question-{{ q.id }}">
+
+      <!-- Header câu hỏi: title trong ngoặc đứng trước nội dung -->
+      <div class="oq-question-head">
+        <span class="oq-number">Question {{ forloop.counter }}:</span>
+        <h3><strong>[{{ q.title }}]</strong> {{ q.prompt }}</h3>
+      </div>
+
+      <!-- DẠNG 1: TRẮC NGHIỆM -->
+      {% if q.q_type == 'MULTIPLE_CHOICE' %}
+        <form method="POST" action="#question-{{ q.id }}">
+          {% csrf_token %}
+          <input type="hidden" name="question_id" value="{{ q.id }}">
+          <input type="hidden" name="action" value="submit_mc">
+
+          <div class="oq-options" role="radiogroup" aria-label="Answer choices">
+            {% for opt in q.options %}
+              <label class="oq-option{% if q.eval and q.eval.selected == opt %} is-selected{% endif %}">
+                <input type="radio" name="question_{{ q.id }}" value="{{ opt }}"
+                       {% if q.eval and q.eval.selected == opt %}checked{% endif %}>
+                <span>{{ opt }}</span>
+              </label>
+            {% endfor %}
           </div>
-        </div>
 
-        <!-- DẠNG 1: TRẮC NGHIỆM -->
-        {% if q.q_type == 'MULTIPLE_CHOICE' %}
-          <form method="POST" action="#question-{{ q.id }}">
-            {% csrf_token %}
-            <input type="hidden" name="question_id" value="{{ q.id }}">
-            <input type="hidden" name="action" value="submit_mc">
+          <button type="submit" class="btn btn-primary">Submit</button>
+        </form>
 
-            <div class="space-y-3 mb-5">
-              {% for opt in q.options %}
-                <label class="flex items-center p-3.5 border rounded-lg cursor-pointer transition-all 
-                              {% if q.eval and q.eval.selected == opt %}bg-indigo-50 border-indigo-400{% else %}bg-white border-gray-200 hover:bg-gray-50{% endif %}">
-                  <input type="radio" name="question_{{ q.id }}" value="{{ opt }}" 
-                         {% if q.eval and q.eval.selected == opt %}checked{% endif %} 
-                         style="display: inline-block !important; width: 16px !important; height: 16px !important; min-width: 16px !important; margin-right: 12px !important; flex-shrink: 0 !important;">
-                  <span class="text-sm font-medium text-gray-800 leading-snug">{{ opt }}</span>
-                </label>
-              {% endfor %}
+        {% if q.eval %}
+          <div class="oq-feedback {% if q.eval.is_correct %}is-correct{% else %}is-wrong{% endif %}" role="status">
+            <div class="oq-feedback-title">
+              {% if q.eval.is_correct %}<span>✅ Correct!</span>{% else %}<span>❌ Incorrect!</span>{% endif %}
             </div>
-
-            <button type="submit" class="btn btn-primary text-sm shadow-sm transition-all duration-200">Submit</button>
-          </form>
-
-          {% if q.eval %}
-            <div class="mt-5 p-4 rounded-lg border {% if q.eval.is_correct %}bg-green-50 border-green-300 text-green-900{% else %}bg-red-50 border-red-300 text-red-900{% endif %}">
-              <div class="flex items-center space-x-2 mb-2 font-bold text-lg">
-                {% if q.eval.is_correct %}
-                  <span>✅ Correct!</span>
-                {% else %}
-                  <span>❌ Incorrect!</span>
-                {% endif %}
-              </div>
-              <div class="pl-7">
-                <p class="text-sm"><strong>Answer:</strong> {{ q.correct_answer }}</p>
-                {% if q.explanation %}
-                  <p class="text-sm mt-1"><strong>Explanation:</strong> {{ q.explanation }}</p>
-                {% endif %}
-              </div>
-            </div>
-          {% endif %}
-
-        <!-- DẠNG 2: TRẢ LỜI NGẮN (RUBRIC) -->
-        {% else %}
-          <form method="POST" action="#question-{{ q.id }}">
-            {% csrf_token %}
-            <input type="hidden" name="question_id" value="{{ q.id }}">
-            <input type="hidden" name="action" value="submit_rubric">
-
-            <div class="mb-4">
-              <textarea name="rubric_text" rows="4" placeholder="Enter your answer here..."
-                        class="w-full p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm resize-y">{{ q.eval.user_text|default:'' }}</textarea>
-            </div>
-
-            <button type="submit" class="btn btn-primary text-sm shadow-sm transition-all duration-200">Submit</button>
-          </form>
-
-          {% if q.eval %}
-            <div class="mt-5 p-5 rounded-xl border {% if q.eval.is_passed %}bg-green-50 border-green-300{% else %}bg-amber-50 border-amber-300{% endif %}">
-              <div class="mb-3">
-                <div class="flex items-center justify-between mb-1.5">
-                  {% if q.eval.is_passed %}
-                    <span class="text-green-800 font-bold flex items-center"><span class="mr-2">✅</span> Passed</span>
-                  {% else %}
-                    <span class="text-amber-800 font-bold flex items-center"><span class="mr-2">⚠️</span> Failed</span>
-                  {% endif %}
-                  <span class="font-bold {% if q.eval.is_passed %}text-green-700{% else %}text-amber-700{% endif %}"> - Score: {{ q.eval.score_percent }}% </span>
-                </div>
-                <div class="w-full bg-gray-200 rounded-full h-2">
-                  <div class="h-2 rounded-full transition-all duration-500 {% if q.eval.is_passed %}bg-green-500{% else %}bg-amber-500{% endif %}" style="--p: {{ q.eval.score_percent }}%; width: var(--p);"></div>
-                </div>
-                <p class="text-xs text-gray-500 mt-1 text-right">Need at least 75% to pass</p>
-              </div>
-
-              <div class="pt-3 border-t {% if q.eval.is_passed %}border-green-200{% else %}border-amber-200{% endif %}">
-                <p class="text-sm text-gray-800 mb-2"><strong>Reference answer:</strong></p>
-                <div class="bg-white p-3 rounded border border-gray-200 text-sm text-gray-700 mb-2">{{ q.correct_answer }}</div>
-                
-                {% if q.explanation %}
-                  <p class="text-sm text-gray-800 mt-3"><strong>Requirements:</strong></p>
-                  <p class="text-sm text-gray-600 italic">{{ q.explanation }}</p>
-                {% endif %}
-              </div>
-            </div>
-          {% endif %}
+            <p><strong>Answer:</strong> {{ q.correct_answer }}</p>
+            {% if q.explanation %}
+              <p><strong>Explanation:</strong> {{ q.explanation }}</p>
+            {% endif %}
+          </div>
         {% endif %}
 
-      </div>
-    {% empty %}
-      <div class="panel text-center py-10 border border-dashed border-gray-300">
-        <p class="text-gray-500 text-lg">No question available.</p>
-      </div>
-    {% endfor %}
-  </div>
+      <!-- DẠNG 2: TRẢ LỜI NGẮN (RUBRIC) -->
+      {% else %}
+        <form method="POST" action="#question-{{ q.id }}">
+          {% csrf_token %}
+          <input type="hidden" name="question_id" value="{{ q.id }}">
+          <input type="hidden" name="action" value="submit_rubric">
+
+          <label for="rubric-{{ q.id }}">Your answer</label>
+          <textarea id="rubric-{{ q.id }}" name="rubric_text" rows="4" placeholder="Enter your answer here...">{% if q.eval %}{{ q.eval.user_text }}{% endif %}</textarea>
+
+          <div class="oq-form-actions oq-start">
+            <button type="submit" class="btn btn-primary">Submit</button>
+          </div>
+        </form>
+
+        {% if q.eval %}
+          <div class="oq-feedback {% if q.eval.is_passed %}is-correct{% else %}is-partial{% endif %}" role="status">
+            <div class="oq-feedback-title">
+              {% if q.eval.is_passed %}<span>✅ Passed</span>{% else %}<span>⚠️ Not yet</span>{% endif %}
+              <span>Score: {{ q.eval.score_percent }}%</span>
+            </div>
+            <div class="bar-track" aria-hidden="true">
+              <div class="bar-fill" style="width: {{ q.eval.score_percent }}%;"></div>
+            </div>
+            <p class="micro-note">You need at least 75% of the key ideas to pass.</p>
+
+            <div class="oq-reference">
+              <p><strong>Reference answer:</strong></p>
+              <div class="oq-reference-box">{{ q.correct_answer }}</div>
+              {% if q.explanation %}
+                <p><strong>Requirements:</strong> <em>{{ q.explanation }}</em></p>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      {% endif %}
+
+    </section>
+  {% empty %}
+    <div class="panel oq-empty">No question available.</div>
+  {% endfor %}
 </div>
 
 <script>
@@ -128,64 +108,58 @@
     }
 
     const quizContainer = document.getElementById("quiz-container");
-    if (quizContainer) {
-      quizContainer.addEventListener("submit", async function(e) {
-        if (e.target.tagName === "FORM") {
-          e.preventDefault(); 
-          
-          const form = e.target;
-          const panel = form.closest(".panel");
-          const submitBtn = form.querySelector('button[type="submit"]');
-          const actionType = form.querySelector('input[name="action"]').value;
+    if (!quizContainer) return;
 
-          if (actionType === "submit_mc") {
-            const hasSelection = form.querySelector('input[type="radio"]:checked');
-            if (!hasSelection) {
-              alert("⚠️ Choose an answer before submitting!");
-              return;
-            }
-          }
-          
-          const originalText = submitBtn.innerHTML;
-          submitBtn.innerHTML = "⏳ Đang xử lý...";
-          submitBtn.disabled = true;
-          submitBtn.classList.add("opacity-70", "cursor-not-allowed");
-
-          try {
-            const formData = new FormData(form);
-            const targetUrl = window.location.href.split('#')[0]; 
-
-            const response = await fetch(targetUrl, {
-              method: "POST",
-              body: formData,
-              headers: { "X-Requested-With": "XMLHttpRequest" }
-            });
-
-            if (response.ok) {
-              const html = await response.text();
-              const parser = new DOMParser();
-              const doc = parser.parseFromString(html, "text/html");
-              
-              const newPanel = doc.getElementById(panel.id);
-              if (newPanel) {
-                panel.innerHTML = newPanel.innerHTML;
-              }
-            } else {
-              alert(`❌ Lỗi từ máy chủ (Mã: ${response.status}).`);
-              submitBtn.innerHTML = originalText;
-              submitBtn.disabled = false;
-              submitBtn.classList.remove("opacity-70", "cursor-not-allowed");
-            }
-          } catch (err) {
-            console.error(err);
-            alert("❌ Can't connect to the server!");
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-            submitBtn.classList.remove("opacity-70", "cursor-not-allowed");
-          }
-        }
+    // Highlight the chosen option right away, before submitting.
+    quizContainer.addEventListener("change", function(e) {
+      if (e.target.type !== "radio") return;
+      e.target.closest(".oq-options").querySelectorAll(".oq-option").forEach(function(option) {
+        option.classList.toggle("is-selected", option.contains(e.target));
       });
-    }
+    });
+
+    quizContainer.addEventListener("submit", async function(e) {
+      if (e.target.tagName !== "FORM") return;
+      e.preventDefault();
+
+      const form = e.target;
+      const panel = form.closest(".oq-question");
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const actionType = form.querySelector('input[name="action"]').value;
+
+      if (actionType === "submit_mc" && !form.querySelector('input[type="radio"]:checked')) {
+        alert("⚠️ Choose an answer before submitting!");
+        return;
+      }
+
+      const originalText = submitBtn.textContent;
+      submitBtn.textContent = "⏳ Checking...";
+      submitBtn.disabled = true;
+
+      try {
+        const response = await fetch(window.location.href.split('#')[0], {
+          method: "POST",
+          body: new FormData(form),
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+
+        if (response.ok) {
+          const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+          const newPanel = doc.getElementById(panel.id);
+          if (newPanel) {
+            panel.innerHTML = newPanel.innerHTML;
+            return;
+          }
+        } else {
+          alert(`❌ Server error (code ${response.status}).`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert("❌ Can't connect to the server!");
+      }
+      submitBtn.textContent = originalText;
+      submitBtn.disabled = false;
+    });
   });
 </script>
 {% endblock %}

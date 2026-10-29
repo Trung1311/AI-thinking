@@ -8,7 +8,10 @@ from django.conf import settings
 from ..exceptions import AIServiceUnavailable, InvalidAIResponse
 
 
-MAX_RESPONSE_BYTES = 64_000
+# Ten generated quiz questions (prompt, explanation, five hints, five
+# choices each) need ~2.5k output tokens; 2048 cut that JSON off mid-way.
+MAX_OUTPUT_TOKENS = 8192
+MAX_RESPONSE_BYTES = 256_000
 GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions'
 
 # Cloudflare (fronting Groq's API) bot-flags urllib's default User-Agent
@@ -48,7 +51,7 @@ class GroqProvider:
                 {'role': 'user', 'content': user_prompt},
             ],
             'response_format': {'type': 'json_object'},
-            'max_tokens': 2048,
+            'max_tokens': MAX_OUTPUT_TOKENS,
             'stream': False,
         }).encode('utf-8')
         request = Request(

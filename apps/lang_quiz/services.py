@@ -247,7 +247,7 @@ def classify_language_error(*, answer, reasoning, question_type=None, reference_
     system_prompt = (
         'You are an AI diagnostic assistant for language learning. '
         'Classify the learner mistake into one of: vocabulary_gap, grammar_misconception, context_misunderstanding. '
-        'If the answer is fully correct, set gap_type to null and is_correct to true.'
+        'If the answer is fully correct, set gap_type to "none" and is_correct to true.'
     )
     user_prompt = (
         f'Question Type: {question_type or "General"}\n'
@@ -261,11 +261,17 @@ def classify_language_error(*, answer, reasoning, question_type=None, reference_
         response = generate_ai_response(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
+            # Must be real JSON Schema — Gemini answers a bare
+            # {'field': 'type-name'} map with a 400 on every call.
             response_schema={
-                'gap_type': 'string',
-                'is_correct': 'boolean',
-                'confidence': 'number',
-                'explanation': 'string',
+                'type': 'object',
+                'properties': {
+                    'gap_type': {'type': 'string', 'enum': [*LANGUAGE_GAP_TYPES, 'none']},
+                    'is_correct': {'type': 'boolean'},
+                    'confidence': {'type': 'number'},
+                    'explanation': {'type': 'string'},
+                },
+                'required': ['gap_type', 'is_correct', 'confidence', 'explanation'],
             },
         )
         if isinstance(response, dict):

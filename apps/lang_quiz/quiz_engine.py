@@ -27,15 +27,31 @@ SECTION_LABELS = {
     'diagnostic': '診断テスト',
 }
 
-AI_QUESTION_SCHEMA = [{
-    'prompt': 'string',
-    'answer': 'string',
-    'skill_focus': 'string',
-    'explanation': 'string',
-    'next_step': 'string',
-    'hints': ['string'],
-    'choices': ['string'],
-}]
+# A real JSON Schema, wrapped in a top-level object: Gemini rejects anything
+# that is not JSON Schema with a 400, and the DeepSeek/Groq adapters use
+# JSON-object mode, which can only return an object, never a bare array.
+AI_QUESTION_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'questions': {
+            'type': 'array',
+            'items': {
+                'type': 'object',
+                'properties': {
+                    'prompt': {'type': 'string'},
+                    'answer': {'type': 'string'},
+                    'skill_focus': {'type': 'string'},
+                    'explanation': {'type': 'string'},
+                    'next_step': {'type': 'string'},
+                    'hints': {'type': 'array', 'items': {'type': 'string'}},
+                    'choices': {'type': 'array', 'items': {'type': 'string'}},
+                },
+                'required': ['prompt', 'answer', 'explanation', 'hints', 'choices'],
+            },
+        },
+    },
+    'required': ['questions'],
+}
 
 
 VOCABULARY_ANSWER_MODES = {'multiple_choice', 'typing'}
@@ -607,6 +623,10 @@ def difficulty_from_diagnostic(session_key, section):
 
 
 def _questions_from_ai(specs, section, count, *, answer_mode='multiple_choice', difficulty='intermediate'):
+    # Providers answer in the AI_QUESTION_SCHEMA shape ({"questions": [...]});
+    # a bare list is still accepted for callers/tests that pass one directly.
+    if isinstance(specs, dict):
+        specs = specs.get('questions')
     if not isinstance(specs, list) or len(specs) < count:
         return []
     questions = []
@@ -939,7 +959,7 @@ _UPLOAD_SYSTEM_PROMPTS = {
         '  hint3=give a conceptual clue about the answer type, '
         '  hint4=give the first word of the answer, '
         '  hint5=state the full answer. '
-        'Return exactly the requested count as a JSON array.'
+        'Return exactly the requested count in the "questions" array.'
     ),
     'grammar': (
         'You are an expert English grammar teacher designing questions for language learners. '
@@ -963,7 +983,7 @@ _UPLOAD_SYSTEM_PROMPTS = {
         '  hint3=give the sentence structure/formula (e.g., "Subject + have/has + past participle"), '
         '  hint4=give the first word(s) of the answer, '
         '  hint5=state the full answer. '
-        'Return exactly the requested count as a JSON array.'
+        'Return exactly the requested count in the "questions" array.'
     ),
     'vocabulary': (
         'You are an expert English vocabulary teacher. '
@@ -1062,7 +1082,7 @@ def generate_uploaded_questions(
         if section == 'myself' and answer_mode == 'multiple_choice':
             raise ValueError(
                 'AIへ接続できないため、教材に沿った5択を作成できませんでした。'
-                'Groqの設定と接続を確認して、もう一度お試しください。'
+                'AIプロバイダー（DeepSeek / Gemini / Groq）の設定と接続を確認して、もう一度お試しください。'
             ) from exc
 
     # --- Smart rule-based fallback (when AI is unavailable) ---

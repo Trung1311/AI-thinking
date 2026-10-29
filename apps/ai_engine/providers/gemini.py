@@ -7,6 +7,11 @@ from django.conf import settings
 from ..exceptions import AIServiceUnavailable, InvalidAIResponse
 
 
+# Teach-Back evaluates five fields (512 tokens truncated it), and ten
+# generated language-quiz questions need ~2.5k tokens (2048 truncated those).
+MAX_OUTPUT_TOKENS = 8192
+
+
 def _gemini_compatible_schema(schema):
     compatible = deepcopy(schema or {})
 
@@ -25,6 +30,10 @@ def _gemini_compatible_schema(schema):
 
 
 class GeminiProvider:
+    # Gemini accepts inline file parts (PDF, images), so Maths course
+    # material can be attached — see client.generate_ai_response(files=...).
+    supports_files = True
+
     def __init__(self, *, api_key=None, model=None, timeout=None, client=None):
         self.api_key = api_key or os.environ.get('GEMINI_API_KEY', '')
         self.model = model or getattr(settings, 'GEMINI_MODEL', 'gemini-flash-latest')
@@ -46,20 +55,31 @@ class GeminiProvider:
         )
         return self._client
 
-    def generate(self, *, system_prompt, user_prompt, response_schema=None):
+    def generate(self, *, system_prompt, user_prompt, response_schema=None, files=None):
         client = self._get_client()
         from google.genai import errors as genai_errors
+
+        contents = user_prompt
+        if files:
+            from google.genai import types as genai_types
+
+            contents = [user_prompt] + [
+                genai_types.Part.from_bytes(
+                    data=file_bytes,
+                    mime_type=mime_type or 'application/octet-stream',
+                )
+                for file_bytes, mime_type in files
+            ]
 
         try:
             response = client.models.generate_content(
                 model=self.model,
-                contents=user_prompt,
+                contents=contents,
                 config={
                     'system_instruction': system_prompt,
                     'response_mime_type': 'application/json',
                     'response_json_schema': _gemini_compatible_schema(response_schema),
-                    # Teach-Back evaluates five fields; 512 tokens can truncate otherwise-valid JSON.
-                    'max_output_tokens': 2048,
+                    'max_output_tokens': MAX_OUTPUT_TOKENS,
                     'temperature': 0,
                 },
             )
@@ -74,6 +94,10 @@ class GeminiProvider:
             raise AIServiceUnavailable(f'Gemini request failed: {exc}') from exc
         except OSError as exc:
             raise AIServiceUnavailable('Could not reach Gemini.') from exc
+        candidates = getattr(response, 'candidates', None) or []
+        finish_reason = getattr(candidates[0], 'finish_reason', None) if candidates else None
+        if str(getattr(finish_reason, 'name', finish_reason)) == 'MAX_TOKENS':
+            raise InvalidAIResponse('Gemini output was cut off at the token limit.')
         if isinstance(getattr(response, 'parsed', None), dict):
             return response.parsed
         response_text = getattr(response, 'text', '')

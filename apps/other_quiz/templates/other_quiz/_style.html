@@ -1,0 +1,72 @@
+<style>
+  /* Page-scoped styles for Other Subjects. These templates used Tailwind
+     utility classes, but Tailwind is never loaded on this site, so every
+     one of them was a no-op (invisible progress bars, unspaced rows). The
+     rules below read base.css's tokens so the section matches the rest. */
+  .oq-page-head { margin-bottom: 1.5rem; }
+  .oq-page-head h1, .oq-page-head h2 { margin: 0 0 .35rem; }
+  .oq-page-head p { margin: 0; color: var(--color-muted-fg); }
+
+  .oq-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem; }
+  @media (max-width: 768px) { .oq-grid { grid-template-columns: minmax(0, 1fr); } }
+
+  .oq-card { display: flex; flex-direction: column; justify-content: space-between; gap: 1rem; }
+  .oq-card-title { display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; font-size: 1.2rem; }
+  .oq-card-title .oq-icon { font-size: 1.5rem; line-height: 1; }
+  .oq-card p.oq-desc { margin: 0; color: var(--color-muted-fg); font-size: .92rem; }
+
+  .oq-meta { display: flex; align-items: center; justify-content: space-between; gap: .75rem; font-size: .85rem; color: var(--color-muted-fg); margin-bottom: .4rem; }
+  .oq-meta strong { color: var(--color-primary); }
+  .oq-start { justify-content: flex-start; }
+  .oq-chip { display: inline-block; padding: .15rem .55rem; border-radius: 999px; background: var(--color-primary-tint); color: var(--color-primary-hover); font-weight: 600; font-size: .8rem; }
+  .oq-card .bar-track { margin-bottom: 0; }
+
+  .oq-card-footer { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding-top: .75rem; border-top: 1px solid var(--color-border); font-size: .9rem; color: var(--color-muted-fg); }
+  .oq-card-footer a { font-weight: 600; color: var(--color-primary); }
+
+  .oq-lesson { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+  .oq-lesson-body { flex: 1; min-width: 0; }
+  .oq-lesson-body h3 { margin: .15rem 0 .6rem; font-size: 1.1rem; }
+  .oq-eyebrow { font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--color-primary); }
+  .oq-lesson .bar-track { max-width: 36rem; margin-bottom: 0; }
+  .oq-lesson-action { flex: none; }
+  @media (max-width: 600px) {
+    .oq-lesson { flex-direction: column; align-items: stretch; }
+    .oq-lesson-action .btn { width: 100%; }
+  }
+
+  .oq-create { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border); }
+  .oq-create-toggle { display: flex; justify-content: center; margin-bottom: 1rem; }
+  .oq-form-panel { max-width: 36rem; margin: 0 auto; }
+  /* .panel sets display:block, which would otherwise beat the [hidden] attribute. */
+  .oq-form-panel[hidden] { display: none; }
+  .oq-form-panel h2 { margin: 0 0 .5rem; font-size: 1.15rem; }
+  .oq-form-panel label:first-of-type { margin-top: .5rem; }
+  .oq-form-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1rem; }
+  .oq-hint { margin: .35rem 0 0; font-size: .8rem; color: var(--color-muted-fg); }
+
+  .oq-question { margin-bottom: 1.5rem; }
+  .oq-question-head { display: flex; gap: .5rem; align-items: baseline; padding-bottom: .75rem; margin-bottom: 1rem; border-bottom: 1px solid var(--color-border); }
+  .oq-question-head .oq-number { flex: none; font-weight: 700; color: var(--color-muted-fg); }
+  .oq-question-head h3 { margin: 0; font-size: 1rem; font-weight: 500; line-height: 1.6; }
+
+  .oq-options { display: grid; gap: .6rem; margin-bottom: 1.25rem; }
+  .oq-option { display: flex; align-items: center; gap: .75rem; margin: 0; padding: .8rem 1rem; border: 1px solid var(--color-border); border-radius: .6rem; background: var(--color-surface); font-weight: 500; cursor: pointer; }
+  .oq-option:hover { background: var(--color-muted); }
+  .oq-option.is-selected { border-color: var(--color-primary); background: var(--color-primary-tint); }
+  .oq-option input[type="radio"] { flex: none; width: 1rem; height: 1rem; margin: 0; padding: 0; accent-color: var(--color-primary); }
+
+  .oq-feedback { margin-top: 1.25rem; padding: 1rem 1.25rem; border-radius: .6rem; border: 1px solid; }
+  .oq-feedback p { margin: .35rem 0 0; font-size: .92rem; }
+  .oq-feedback-title { display: flex; align-items: center; justify-content: space-between; gap: .75rem; font-weight: 700; font-size: 1.05rem; }
+  .oq-feedback.is-correct { background: #f0fdf4; border-color: #86efac; color: #14532d; }
+  .oq-feedback.is-wrong { background: #fef2f2; border-color: #fca5a5; color: #7f1d1d; }
+  .oq-feedback.is-partial { background: #fffbeb; border-color: #fcd34d; color: #78350f; }
+  .oq-feedback .bar-track { margin: .6rem 0 .25rem; background: rgba(0, 0, 0, .08); }
+  .oq-feedback.is-partial .bar-fill { background: var(--color-accent); }
+  .oq-reference { margin-top: .75rem; padding-top: .75rem; border-top: 1px solid rgba(0, 0, 0, .08); }
+  .oq-reference-box { margin-top: .35rem; padding: .75rem; border: 1px solid var(--color-border); border-radius: .5rem; background: var(--color-surface); color: var(--color-fg); font-size: .92rem; }
+
+  .oq-empty { text-align: center; color: var(--color-muted-fg); border-style: dashed; }
+  .oq-question button[disabled] { opacity: .7; cursor: not-allowed; }
+</style>

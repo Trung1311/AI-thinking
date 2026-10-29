@@ -2,94 +2,76 @@
 
 {% block title %}{{ subject.title }}{% endblock %}
 
+{% block extra_head %}
+{% include "other_quiz/_style.html" %}
+{% endblock %}
+
 {% block navbar %}
   {% include "components/navbar.html" with subject_name=subject.title subject_icon=subject.icon|default:"📖" %}
 {% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto py-6">
-  <h2 class="text-xl font-bold mb-4">Lesson list</h2>
-
-  <div class="space-y-6 mb-8">
-    {% for lesson in subject.lessons.all %}
-      <div class="panel mb-6">
-        <!-- Dùng Flex căn chỉnh toàn bộ nội dung bên trái và nút ôn tập áp sát lề phải -->
-        <div class="flex items-center justify-between">
-          
-          <!-- Cụm thông tin bên trái -->
-          <div class="space-y-3 flex-grow pr-4">
-            <div>
-              <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">{{ lesson.chapter }}</span>
-              <h3 class="text-lg font-bold text-gray-800">{{ lesson.title }}</h3>
-            </div>
-
-            <!-- Thanh tiến độ & Số câu hỏi -->
-            <div>
-              <div class="flex items-center space-x-3 text-xs text-gray-600 mb-1">
-                <span>Progress: <strong class="text-indigo-600">{{ lesson.progress_percent }}%</strong></span>
-                <span class="text-gray-300">|</span>
-                <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">{{ lesson.questions.all|length }} questions</span>
-              </div>
-              <div class="w-full bg-gray-200 rounded-full h-2 max-w-xl">
-                <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="--p: {{ lesson.progress_percent }}%; width: var(--p);"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Nút ôn tập được đẩy hẳn sang góc phải ngoài cùng -->
-          <div class="flex-shrink-0 pl-4 border-l border-gray-100 flex items-center">
-            <a href="{% url 'other_quiz:lesson_detail' subject.id lesson.id %}" 
-               class="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-all flex items-center space-x-2 font-medium text-sm" 
-               title="Bắt đầu ôn tập">
-              <span>📝</span>
-              <span class="hidden sm:inline">Let's gooo</span>
-            </a>
-          </div>
-
-        </div>
-      </div>
-    {% empty %}
-      <div class="panel text-center py-8">
-        <p class="text-gray-500">No lesson available.</p>
-      </div>
-    {% endfor %}
-  </div>
-
-  <!-- Nút & Form Upload Tài Liệu Ở Dưới Cùng -->
-  <div class="border-t pt-6">
-    <div class="flex justify-center mb-4">
-      <button onclick="const form = document.getElementById('uploadDocForm'); form.style.display = (form.style.display === 'none') ? 'block' : 'none';" class="btn btn-primary">
-        ✨ Upload file to create <a href=""></a> new lesson
-      </button>
-    </div>
-
-    {% if messages %}
-      <div class="mb-4 max-w-xl mx-auto">
-        {% for message in messages %}
-          <div class="p-3 rounded mb-2 {% if message.tags == 'error' %}bg-red-100 text-red-700{% else %}bg-green-100 text-green-700{% endif %}">
-            {{ message }}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-
-    <div id="uploadDocForm" style="display: none;" class="max-w-xl mx-auto panel border-2 border-dashed border-indigo-200 p-4">
-      <form method="POST" enctype="multipart/form-data" 
-            onsubmit="let btn = document.getElementById('btnSubmit'); btn.innerHTML = '⏳ AI đang xử lý...'; btn.disabled = true; btn.classList.add('opacity-50', 'cursor-not-allowed');">
-        {% csrf_token %}
-        
-        <input type="file" name="document" accept=".pdf,.txt,.docx" required
-              class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer border rounded-lg bg-white p-2 mb-4">
-        
-        <div class="flex justify-end">
-          <button id="btnSubmit" type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
-            🚀 Create
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
+<div class="oq-page-head">
+  <h2>Lesson list</h2>
 </div>
+
+<div>
+  {% for lesson in lessons %}
+    <article class="panel oq-lesson">
+      <!-- Cụm thông tin bên trái -->
+      <div class="oq-lesson-body">
+        <span class="oq-eyebrow">{{ lesson.chapter }}</span>
+        <h3>{{ lesson.title }}</h3>
+
+        <!-- Thanh tiến độ & Số câu hỏi -->
+        <div class="oq-meta oq-start">
+          <span>Progress: <strong>{{ lesson.progress_percent }}%</strong></span>
+          {% with question_count=lesson.questions.count %}
+            <span class="oq-chip">{{ question_count }} question{{ question_count|pluralize }}</span>
+          {% endwith %}
+        </div>
+        <div class="bar-track" role="progressbar" aria-label="{{ lesson.title }} progress"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ lesson.progress_percent }}">
+          <div class="bar-fill" style="width: {{ lesson.progress_percent }}%;"></div>
+        </div>
+      </div>
+
+      <!-- Nút ôn tập ở góc phải -->
+      <div class="oq-lesson-action">
+        <a href="{% url 'other_quiz:lesson_detail' subject.id lesson.id %}" class="btn btn-primary" title="Start reviewing">
+          📝 Let's go
+        </a>
+      </div>
+    </article>
+  {% empty %}
+    <div class="panel oq-empty">No lesson available.</div>
+  {% endfor %}
+</div>
+
+<!-- Upload tài liệu để tạo bài học mới -->
+<section class="oq-create">
+  <div class="oq-create-toggle">
+    <button type="button" class="btn btn-primary" aria-controls="uploadDocForm" aria-expanded="false"
+            onclick="const panel = document.getElementById('uploadDocForm'); panel.hidden = !panel.hidden; this.setAttribute('aria-expanded', String(!panel.hidden));">
+      ✨ Upload a file to create a new lesson
+    </button>
+  </div>
+
+  <div id="uploadDocForm" class="panel oq-form-panel" hidden>
+    <form method="POST" enctype="multipart/form-data"
+          onsubmit="const btn = document.getElementById('btnSubmit'); btn.textContent = '⏳ AI is generating the lesson...'; btn.disabled = true;">
+      {% csrf_token %}
+
+      <label for="lesson-document">Study material</label>
+      <input type="file" id="lesson-document" name="document" accept=".pdf,.txt,.docx" required>
+      <p class="oq-hint">PDF, DOCX or TXT, up to 10 MB. AI creates 5 multiple-choice questions and 1 short-answer question from it.</p>
+
+      <div class="oq-form-actions">
+        <button id="btnSubmit" type="submit" class="btn btn-primary">🚀 Create</button>
+      </div>
+    </form>
+  </div>
+</section>
 
 <script>
   document.addEventListener("DOMContentLoaded", function() {

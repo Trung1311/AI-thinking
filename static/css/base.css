@@ -551,6 +551,8 @@ code { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 .messages { margin-bottom: 1rem; }
 .message { padding: 1rem; border-radius: .5rem; background: #eef2ff; }
 .message.success { background: #dcfce7; }
+.message.warning { background: #fffbeb; color: #92400e; }
+.message.error { background: #fef2f2; color: #991b1b; }
 .form-field { margin: 1rem 0; }
 .form-field label { margin: 0; }
 .form-field-error { padding: .75rem; border-left: .3rem solid var(--color-destructive); border-radius: 0 .4rem .4rem 0; background: #fef2f2; }

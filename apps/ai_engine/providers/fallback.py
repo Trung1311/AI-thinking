@@ -36,16 +36,28 @@ class FallbackProvider:
     def __init__(self, providers=None):
         self._providers = providers if providers is not None else _default_providers()
 
-    def generate(self, *, system_prompt, user_prompt, response_schema=None):
-        if not self._providers:
+    @property
+    def supports_files(self):
+        return any(getattr(provider, 'supports_files', False) for provider in self._providers)
+
+    def generate(self, *, system_prompt, user_prompt, response_schema=None, files=None):
+        # With files attached, only providers that can actually read them
+        # are tried — the rest would answer as if nothing was uploaded.
+        providers = [
+            provider for provider in self._providers
+            if not files or getattr(provider, 'supports_files', False)
+        ]
+        if not providers:
             raise AIServiceUnavailable('No external AI provider is configured.')
+        extra = {'files': files} if files else {}
         last_error = None
-        for provider in self._providers:
+        for provider in providers:
             try:
                 return provider.generate(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     response_schema=response_schema,
+                    **extra,
                 )
             except AIEngineError as exc:
                 last_error = exc
