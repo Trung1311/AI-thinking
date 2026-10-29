@@ -420,10 +420,37 @@ class GeminiProviderTests(SimpleTestCase):
         self.assertEqual(call['model'], 'gemini-test-model')
         self.assertEqual(call['contents'], 'privacy-minimized signals')
         self.assertEqual(call['config']['response_mime_type'], 'application/json')
-        self.assertEqual(call['config']['max_output_tokens'], 2048)
+        self.assertEqual(call['config']['max_output_tokens'], 8192)
         encoded_schema = json.dumps(call['config']['response_json_schema'])
         self.assertNotIn('additionalProperties', encoded_schema)
         self.assertNotIn('const', encoded_schema)
+
+    def test_gemini_attaches_files_as_inline_parts(self):
+        models = Mock()
+        models.generate_content.return_value = SimpleNamespace(parsed={'ok': True}, text='')
+        provider = GeminiProvider(api_key='test-key', client=SimpleNamespace(models=models))
+
+        provider.generate(
+            system_prompt='system', user_prompt='read this',
+            files=[(b'%PDF-1.4', 'application/pdf')],
+        )
+
+        contents = models.generate_content.call_args.kwargs['contents']
+        self.assertEqual(contents[0], 'read this')
+        self.assertEqual(contents[1].inline_data.mime_type, 'application/pdf')
+        self.assertEqual(contents[1].inline_data.data, b'%PDF-1.4')
+
+    def test_gemini_output_cut_off_at_token_limit_is_invalid(self):
+        models = Mock()
+        models.generate_content.return_value = SimpleNamespace(
+            parsed=None,
+            text='{"questions": [{"prompt": "unfinished',
+            candidates=[SimpleNamespace(finish_reason=SimpleNamespace(name='MAX_TOKENS'))],
+        )
+        provider = GeminiProvider(api_key='test-key', client=SimpleNamespace(models=models))
+
+        with self.assertRaisesMessage(InvalidAIResponse, 'token limit'):
+            provider.generate(system_prompt='system', user_prompt='learner')
 
     def test_sdk_api_error_is_normalized_to_aiengineerror(self):
         # Regression: a failed request (e.g. a deprecated/unavailable
@@ -740,6 +767,32 @@ class FallbackProviderTests(SimpleTestCase):
 
         with self.assertRaises(AIServiceUnavailable):
             provider.generate(system_prompt='system', user_prompt='learner')
+
+    def test_files_skip_providers_that_cannot_read_them(self):
+        # Regression: the shared client refused every file outright after
+        # the Maths merge, so uploaded course material never reached AI.
+        text_only = Mock(spec=['generate'])
+        file_reader = Mock(supports_files=True)
+        file_reader.generate.return_value = VALID_DIAGNOSTIC
+        provider = FallbackProvider(providers=[text_only, file_reader])
+        files = [(b'%PDF-1.4', 'application/pdf')]
+
+        result = generate_ai_response(
+            system_prompt='system', user_prompt='learner', files=files, provider=provider,
+        )
+
+        self.assertEqual(result, VALID_DIAGNOSTIC)
+        text_only.generate.assert_not_called()
+        self.assertEqual(file_reader.generate.call_args.kwargs['files'], files)
+
+    def test_files_with_no_file_capable_provider_are_unavailable(self):
+        provider = FallbackProvider(providers=[StaticProvider(VALID_DIAGNOSTIC)])
+
+        with self.assertRaises(AIServiceUnavailable):
+            generate_ai_response(
+                system_prompt='system', user_prompt='learner',
+                files=[(b'x', 'image/png')], provider=provider,
+            )
 
     @patch.dict(
         'os.environ',

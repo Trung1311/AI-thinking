@@ -1,13 +1,45 @@
 import os
 import json
+import logging
 import uuid
 from pypdf import PdfReader
 import docx
 from groq import Groq
 from django.db import transaction
 
+from apps.ai_engine.client import generate_ai_response
+from apps.ai_engine.exceptions import AIEngineError
+
 from .models import Subject, Lesson, Question
 from .ai_prompts import LESSON_GENERATION_PROMPT
+
+logger = logging.getLogger(__name__)
+
+# Real JSON Schema for the shared provider chain (Gemini rejects anything else).
+LESSON_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'chapter': {'type': 'string'},
+        'title': {'type': 'string'},
+        'questions': {
+            'type': 'array',
+            'items': {
+                'type': 'object',
+                'properties': {
+                    'title': {'type': 'string'},
+                    'prompt': {'type': 'string'},
+                    'q_type': {'type': 'string', 'enum': ['MULTIPLE_CHOICE', 'RUBRIC']},
+                    'options': {'type': 'array', 'items': {'type': 'string'}},
+                    'correct_answer': {'type': 'string'},
+                    'rubric_keywords': {'type': 'array', 'items': {'type': 'string'}},
+                    'explanation': {'type': 'string'},
+                },
+                'required': ['title', 'prompt', 'q_type', 'correct_answer'],
+            },
+        },
+    },
+    'required': ['chapter', 'title', 'questions'],
+}
 
 
 # --- 1. HÀM CHẤM ĐIỂM ---
@@ -42,7 +74,7 @@ def extract_text_from_file(uploaded_file) -> str:
     """Trích xuất chuỗi văn bản từ file (PDF, DOCX, TXT) với kiểm tra kích thước & đa bảng mã."""
     # Giới hạn kích thước file tối đa 10MB
     if uploaded_file.size > 10 * 1024 * 1024:
-        raise ValueError("Kích thước file quá lớn (tối đa 10MB).")
+        raise ValueError("The file is too large (10 MB maximum).")
 
     uploaded_file.seek(0)
     ext = os.path.splitext(uploaded_file.name)[1].lower()
@@ -74,8 +106,8 @@ def extract_text_from_file(uploaded_file) -> str:
 
     except ValueError:
         raise
-    except Exception as e:
-        print(f"Lỗi khi đọc file: {e}")
+    except Exception:
+        logger.warning("Could not read uploaded file %s", uploaded_file.name, exc_info=True)
         return ""
 
     return text.strip()
@@ -91,54 +123,101 @@ def can_evaluate_open_response(question):
     )
 
 
+def _request_lesson_data(raw_text):
+    """Ask AI for the lesson JSON.
+
+    Groq's gpt-oss-120b stays the first choice when GROQ_API_KEY is set; if
+    Groq is not configured or fails, the shared provider chain (DeepSeek ->
+    Gemini -> Groq, from whichever keys exist) is tried — before, a setup
+    with only a Gemini or DeepSeek key could never create a lesson.
+    """
+    prompt = LESSON_GENERATION_PROMPT.format(raw_text=raw_text[:10000])
+
+    api_key = os.environ.get("GROQ_API_KEY")
+    if api_key:
+        try:
+            response = Groq(api_key=api_key).chat.completions.create(
+                model="openai/gpt-oss-120b",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception:
+            logger.warning("Groq lesson generation failed; trying the shared AI chain", exc_info=True)
+
+    try:
+        return generate_ai_response(
+            system_prompt="You create review lessons from study material and answer only with JSON.",
+            user_prompt=prompt,
+            response_schema=LESSON_SCHEMA,
+        )
+    except AIEngineError as exc:
+        raise ValueError(
+            "No AI provider is available right now. Configure GROQ_API_KEY, "
+            "GEMINI_API_KEY or DEEPSEEK_API_KEY, or try again later."
+        ) from exc
+
+
+def _clean_text(value, max_length=None):
+    text = str(value or "").strip()
+    return text[:max_length] if max_length else text
+
+
+def _valid_questions(raw_questions):
+    """Keep only questions the lesson page can actually grade."""
+    questions = []
+    for q in raw_questions if isinstance(raw_questions, list) else []:
+        if not isinstance(q, dict) or not _clean_text(q.get("prompt")):
+            continue
+        q_type = q.get("q_type") if q.get("q_type") in {"MULTIPLE_CHOICE", "RUBRIC"} else "MULTIPLE_CHOICE"
+        correct_answer = _clean_text(q.get("correct_answer"))
+        options = None
+        rubric_keywords = None
+        if q_type == "MULTIPLE_CHOICE":
+            options = [_clean_text(o) for o in q.get("options") or [] if _clean_text(o)]
+            # Without the answer among >= 2 options, no submission could be marked correct.
+            if len(options) < 2 or correct_answer not in options:
+                continue
+        else:
+            rubric_keywords = [_clean_text(k) for k in q.get("rubric_keywords") or [] if _clean_text(k)]
+            if not rubric_keywords:
+                continue
+        questions.append({
+            "title": _clean_text(q.get("title"), 200) or "Question",
+            "prompt": _clean_text(q.get("prompt")),
+            "q_type": q_type,
+            "options": options,
+            "correct_answer": correct_answer,
+            "rubric_keywords": rubric_keywords,
+            "explanation": _clean_text(q.get("explanation")),
+        })
+    return questions
+
+
 def generate_and_save_lesson(subject: Subject, uploaded_file) -> Lesson:
     # 1. Đọc văn bản từ file
     raw_text = extract_text_from_file(uploaded_file)
     if not raw_text:
-        raise ValueError("Không thể đọc nội dung văn bản từ file này hoặc file rỗng.")
+        raise ValueError("Could not read any text from this file, or the file is empty.")
 
-    # 2. Khởi tạo Groq Client
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("Chưa cấu hình GROQ_API_KEY trong file môi trường.")
+    # 2. Gọi AI (Groq trước, sau đó chuỗi provider dùng chung)
+    ai_data = _request_lesson_data(raw_text)
+    if not isinstance(ai_data, dict):
+        raise ValueError("The AI returned an unexpected response. Please try again.")
+    questions = _valid_questions(ai_data.get("questions"))
+    if not questions:
+        raise ValueError("The AI did not return any usable questions. Please try again.")
 
-    client = Groq(api_key=api_key)
-
-    # 3. Định dạng Prompt (Giới hạn tối đa 10.000 ký tự gửi AI)
-    prompt = LESSON_GENERATION_PROMPT.format(raw_text=raw_text[:10000])
-
-    # 4. Gọi Groq API ép kiểu JSON
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        response_format={"type": "json_object"}
-    )
-
-    ai_data = json.loads(response.choices[0].message.content)
-
-    # 5. Lưu vào Database
+    # 3. Lưu vào Database
     with transaction.atomic():
-        lesson_id = f"les_{uuid.uuid4().hex[:8]}"
-
         lesson = Lesson.objects.create(
-            id=lesson_id,
+            id=f"les_{uuid.uuid4().hex[:8]}",
             subject=subject,
-            chapter=ai_data.get("chapter", "Chương 1"),
-            title=ai_data.get("title", "Bài học mới")
+            # CharField limits: MySQL strict mode rejects longer AI-written values.
+            chapter=_clean_text(ai_data.get("chapter"), 50) or "Chapter 1",
+            title=_clean_text(ai_data.get("title"), 200) or "New lesson",
         )
-
-        for q in ai_data.get("questions", []):
-            Question.objects.create(
-                lesson=lesson,
-                title=q.get("title", "Câu hỏi"),
-                prompt=q.get("prompt", ""),
-                q_type=q.get("q_type", "MULTIPLE_CHOICE"),
-                options=q.get("options"),
-                correct_answer=q.get("correct_answer"),
-                rubric_keywords=q.get("rubric_keywords"),
-                explanation=q.get("explanation")
-            )
+        for q in questions:
+            Question.objects.create(lesson=lesson, **q)
 
     return lesson

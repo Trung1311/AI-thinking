@@ -2,102 +2,88 @@
 
 {% block title %}Other Subjects{% endblock %}
 
+{% block extra_head %}
+{% include "other_quiz/_style.html" %}
+{% endblock %}
+
 {% block navbar %}
   {% include "components/navbar.html" with subject_name="Other Subjects" subject_icon="other" %}
 {% endblock %}
 
 {% block content %}
-<style>
-  .custom-subject-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 1.5rem !important;
-  }
-  @media (max-width: 768px) {
-    .custom-subject-grid {
-      grid-template-columns: minmax(0, 1fr) !important;
-    }
-  }
-</style>
-
-<div class="mb-6">
-  <h1 class="text-2xl font-bold">Your Subjects</h1>
-  <p class="text-gray-600">Manage your study material and track progress.</p>
+<div class="oq-page-head">
+  <h1>Your Subjects</h1>
+  <p>Manage your study material and track progress.</p>
 </div>
 
 <!-- Lưới danh sách môn học (2 cột) -->
-<div class="custom-subject-grid mb-6">
+<div class="oq-grid">
   {% for subject in subjects %}
-    <article class="panel flex flex-col justify-between h-full !mb-0">
+    <article class="panel oq-card">
       <div>
-        <h2 class="flex items-center space-x-2 text-xl font-bold mb-2">
-          <span class="text-2xl">{{ subject.icon|default:"📖" }}</span>
+        <h2 class="oq-card-title">
+          <span class="oq-icon" aria-hidden="true">{{ subject.icon|default:"📖" }}</span>
           <span>{{ subject.title }}</span>
         </h2>
-        <p class="text-gray-600 text-sm mb-4">{{ subject.description }}</p>
+        {% if subject.description %}<p class="oq-desc">{{ subject.description }}</p>{% endif %}
       </div>
 
-      <div class="mt-auto">
+      <div>
         <!-- Thanh tiến độ -->
-        <div class="mb-3">
-          <div class="flex justify-between text-xs text-gray-500 mb-1">
-            <span>Progress</span>
-            <span class="font-bold text-indigo-600">{{ subject.progress_percent }}%</span>
-          </div>
-          <div class="w-full bg-gray-200 rounded-full h-2">
-            <div class="w-full bg-gray-200 rounded-full h-2"><div class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="--p: {{ subject.progress_percent }}%; width: var(--p);"></div>
-          </div>
+        <div class="oq-meta">
+          <span>Progress</span>
+          <strong>{{ subject.progress_percent }}%</strong>
         </div>
+        <div class="bar-track" role="progressbar" aria-label="{{ subject.title }} progress"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ subject.progress_percent }}">
+          <div class="bar-fill" style="width: {{ subject.progress_percent }}%;"></div>
+        </div>
+      </div>
 
-        <div class="flex justify-between items-center border-t pt-3">
-          <span class="text-sm text-gray-500">{{ subject.lessons.count }} lessons</span>
-          <a href="{% url 'other_quiz:subject_detail' subject.id %}" class="font-semibold text-indigo-600 hover:underline">
-            Start learning &rarr;
-          </a>
-        </div>
+      <div class="oq-card-footer">
+        {% with lesson_count=subject.lessons.count %}
+          <span>{{ lesson_count }} lesson{{ lesson_count|pluralize }}</span>
+        {% endwith %}
+        <a href="{% url 'other_quiz:subject_detail' subject.id %}">Start learning &rarr;</a>
       </div>
     </article>
   {% empty %}
-    <div class="col-span-full panel text-center text-gray-500">No subject available.</div>
+    <div class="panel oq-empty">No subject available.</div>
   {% endfor %}
 </div>
 
-<!-- Khối tạo môn học tách biệt hoàn toàn ở dưới, có đường line và khoảng cách lớn (mt-16) -->
-<div class="mt-16 pt-8 border-t border-gray-200 clear-both">
-  <div class="flex justify-center mb-6">
-    <button onclick="document.getElementById('createSubjectForm').style.display = 'block';" class="btn btn-primary shadow-sm">
+<!-- Khối tạo môn học tách biệt ở dưới -->
+<section class="oq-create">
+  <div class="oq-create-toggle">
+    <button type="button" class="btn btn-primary" aria-controls="createSubjectForm" aria-expanded="false"
+            onclick="const panel = document.getElementById('createSubjectForm'); panel.hidden = !panel.hidden; this.setAttribute('aria-expanded', String(!panel.hidden)); if (!panel.hidden) panel.querySelector('input').focus();">
       ➕ Create a new subject
     </button>
   </div>
 
-  <div id="createSubjectForm" style="display: none;" class="max-w-xl mx-auto panel shadow-md">
-    <h2 class="text-xl font-bold mb-4">Enter subject information</h2>
-    
-    <form method="POST" action="{% url 'other_quiz:create_subject' %}" class="space-y-4">
+  <div id="createSubjectForm" class="panel oq-form-panel" hidden>
+    <h2>Enter subject information</h2>
+
+    <form method="POST" action="{% url 'other_quiz:create_subject' %}">
       {% csrf_token %}
-      
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Subject name:</label>
-        <input type="text" name="title" required placeholder="Name..." class="w-full p-2.5 border rounded-lg text-sm">
-      </div>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Emoji:</label>
-        <input type="text" name="icon" placeholder="📖" value="📖" class="w-full p-2.5 border rounded-lg text-sm">
-      </div>
+      <label for="subject-title">Subject name</label>
+      <input type="text" id="subject-title" name="title" required maxlength="200" placeholder="Name...">
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Description:</label>
-        <textarea name="description" rows="3" placeholder="Short discription..." class="w-full p-2.5 border rounded-lg text-sm"></textarea>
-      </div>
+      <label for="subject-icon">Emoji</label>
+      <input type="text" id="subject-icon" name="icon" maxlength="10" placeholder="📖" value="📖">
 
-      <div class="flex justify-end space-x-3 pt-2">
-        <button type="button" onclick="document.getElementById('createSubjectForm').style.display = 'none';" class="px-4 py-2 text-sm text-gray-600 hover:underline">Cancel</button>
-        <button type="submit" class="btn btn-primary text-sm">Create</button>
+      <label for="subject-description">Description</label>
+      <textarea id="subject-description" name="description" rows="3" placeholder="Short description..."></textarea>
+
+      <div class="oq-form-actions">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('createSubjectForm').hidden = true; document.querySelector('[aria-controls=createSubjectForm]').setAttribute('aria-expanded', 'false');">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create</button>
       </div>
     </form>
   </div>
-</div>
+</section>
 
 <script>
   document.addEventListener("DOMContentLoaded", function() {

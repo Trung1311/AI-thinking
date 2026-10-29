@@ -61,17 +61,27 @@ def ai_provider_status(*, assistance_enabled=True):
 
 
 def generate_ai_response(*, system_prompt, user_prompt, response_schema=None, provider=None, files=None):
-    """Call a replaceable provider and normalize failures at one boundary."""
-    if files:
-        raise AIServiceUnavailable(
-            'Uploaded files are not sent to external AI providers. Use curated local processing.'
-        )
+    """Call a replaceable provider and normalize failures at one boundary.
+
+    `files` is a list of `(file_bytes, mime_type)` pairs (Maths course
+    material). Only providers that declare `supports_files` receive them;
+    any other provider is treated as unavailable so the caller's curated
+    fallback runs instead of an answer that silently ignored the files.
+    """
     selected_provider = provider or get_ai_provider()
+    extra = {}
+    if files:
+        if not getattr(selected_provider, 'supports_files', False):
+            raise AIServiceUnavailable(
+                'The configured AI provider cannot read uploaded files.'
+            )
+        extra['files'] = files
     try:
         return selected_provider.generate(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             response_schema=response_schema,
+            **extra,
         )
     except AIEngineError:
         raise

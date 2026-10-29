@@ -666,6 +666,31 @@ E. 手表
         self.assertIn('CEFR C1-C2', prompt)
         self.assertIn('Academic Word Builder', prompt)
 
+    @patch('apps.lang_quiz.quiz_engine.generate_ai_response')
+    def test_object_wrapped_ai_questions_are_used(self, mock_ai):
+        # Regression: real providers can only answer with a JSON object
+        # (and Gemini 400s on a non-JSON-Schema), so AI questions arrive as
+        # {"questions": [...]} — previously always discarded for fallback.
+        mock_ai.return_value = {'questions': [
+            {
+                'prompt': f'Provider question {index}',
+                'answer': f'term{index}',
+                'skill_focus': 'Vocabulary in Context',
+                'explanation': 'The term fits the context.',
+                'next_step': 'Use the term in a sentence.',
+                'hints': [f'Hint {level}' for level in range(1, 6)],
+                'choices': [f'term{index}', 'option-a', 'option-b', 'option-c', 'option-d'],
+            }
+            for index in range(10)
+        ]}
+
+        run = self._start('vocabulary')
+
+        self.assertTrue(all(q['prompt'].startswith('Provider question') for q in run.questions))
+        schema = mock_ai.call_args.kwargs['response_schema']
+        self.assertEqual(schema['type'], 'object')
+        self.assertEqual(schema['properties']['questions']['type'], 'array')
+
     def test_correct_missing_answer_removes_it(self):
         original = self._start('vocabulary').questions[0]
         session_key = self.client.session.session_key
